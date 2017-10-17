@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.screenshots      = "https://cloud.githubusercontent.com/assets/2767152/3459842/0c40fe66-0211-11e4-90d8-d8942c8f8651.png"
   s.license          = 'BSD'
   s.author           = { "Muhammad Zeeshan" => "mzeeshanid@yahoo.com" }
-  s.source           = { :git => "https://github.com/mzeeshanid/MZDownloadManager.git", :tag => s.version }
+  s.source           = { :git => "https://github.com/mzeeshanid/MZDownloadManager.git" }
   s.social_media_url = 'https://twitter.com/mzeeshanid'
 
   s.ios.deployment_target = '9.0'
