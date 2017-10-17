@@ -99,7 +99,7 @@ open class MZDownloadManager: NSObject {
 // MARK: Private Helper functions
 
 extension MZDownloadManager {
-    
+
     fileprivate func downloadTasks() -> [URLSessionDownloadTask] {
         var tasks: [URLSessionDownloadTask] = []
         let semaphore : DispatchSemaphore = DispatchSemaphore(value: 0)
@@ -254,8 +254,9 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
             }
         }
     }
-    
-    public func urlSession(_ session: Foundation.URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+
+    @objc(URLSession:task:didCompleteWithError:)
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         debugPrint("task id: \(task.taskIdentifier)")
         /***** Any interrupted tasks due to any reason will be populated in failed state after init *****/
         let error: NSError? = error as NSError?
@@ -346,25 +347,31 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
 //MARK: Public Helper Functions
 
 extension MZDownloadManager {
-    
-    public func addDownloadTask(_ fileName: String, fileURL: String, destinationPath: String) {
-        
-        let url = URL(string: fileURL as String)!
-        let request = URLRequest(url: url)
-        
+
+    public func addDownloadTask(_ fileName: String, request: URLRequest, destinationPath: String) {
+
+        let fileURL = request.url?.absoluteString ?? ""
         let downloadTask = sessionManager.downloadTask(with: request)
         downloadTask.taskDescription = [fileName, fileURL, destinationPath].joined(separator: ",")
         downloadTask.resume()
-        
-        debugPrint("session manager:\(sessionManager) url:\(url) request:\(request)")
-        
+
+        debugPrint("session manager:\(sessionManager) url:\(fileURL) request:\(request)")
+
         let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
         downloadModel.startTime = Date()
         downloadModel.status = TaskStatus.downloading.description()
         downloadModel.task = downloadTask
-        
+
         downloadingArray.append(downloadModel)
         delegate?.downloadRequestStarted?(downloadModel, index: downloadingArray.count - 1)
+    }
+
+
+    public func addDownloadTask(_ fileName: String, fileURL: String, destinationPath: String) {
+        let url = URL(string: fileURL as String)!
+        let request = URLRequest(url: url)
+
+        self.addDownloadTask(fileName, request: request, destinationPath: destinationPath)
     }
     
     public func addDownloadTask(_ fileName: String, fileURL: String) {
