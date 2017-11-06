@@ -76,21 +76,28 @@ open class MZDownloadManager: NSObject {
     
     open var downloadingArray: [MZDownloadModel] = []
     
-    public convenience init(session sessionIdentifer: String, delegate: MZDownloadManagerDelegate) {
+    public convenience init(session sessionConfiguration: URLSessionConfiguration, delegate: MZDownloadManagerDelegate) {
         self.init()
         
         self.delegate = delegate
-        self.sessionManager = backgroundSession(identifier: sessionIdentifer)
+        self.sessionManager = backgroundSession(sessionConfiguration: sessionConfiguration)
         self.populateOtherDownloadTasks()
+
     }
     
     public convenience init(session sessionIdentifer: String, delegate: MZDownloadManagerDelegate, completion: (() -> Void)?) {
-        self.init(session: sessionIdentifer, delegate: delegate)
+        let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: sessionIdentifer)
+        self.init(session: sessionConfiguration, delegate: delegate)
+
+        self.backgroundSessionCompletionHandler = completion
+    }
+
+    public convenience init(configure sessionConfiguration: URLSessionConfiguration, delegate: MZDownloadManagerDelegate, completion: (() -> Void)?) {
+        self.init(session: sessionConfiguration, delegate: delegate)
         self.backgroundSessionCompletionHandler = completion
     }
     
-    fileprivate func backgroundSession(identifier: String) -> URLSession {
-        let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: identifier)
+    fileprivate func backgroundSession(sessionConfiguration: URLSessionConfiguration) -> URLSession {
         let session = Foundation.URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: nil)
         return session
     }
