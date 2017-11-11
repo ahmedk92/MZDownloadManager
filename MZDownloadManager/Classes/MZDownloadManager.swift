@@ -59,7 +59,10 @@ fileprivate func > <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
     /**A delegate method called each time whenever specified destination does not exists. It will be called on the session queue. It provides the opportunity to handle error appropriately
      */
     @objc optional func downloadRequestDestinationDoestNotExists(_ downloadModel: MZDownloadModel, index: Int, location: URL)
-    
+    /**
+    * A delegate method called each time whenever any download task is creating a new request
+    */
+    @objc optional func downloadRequestShouldCreateRequest(_ url: URL) -> URLRequest
 }
 
 open class MZDownloadManager: NSObject {
@@ -146,6 +149,15 @@ extension MZDownloadManager {
                 downloadModel.status = TaskStatus.failed.description()
             }
         }
+    }
+
+    fileprivate func createRequest(_ url: URL) -> URLRequest {
+
+        guard let request = self.delegate?.downloadRequestShouldCreateRequest?(url) else {
+            return URLRequest(url: url)
+        }
+
+        return request
     }
     
     fileprivate func isValidResumeData(_ resumeData: Data?) -> Bool {
@@ -289,7 +301,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                 if self.isValidResumeData(resumeData) == true {
                     newTask = self.sessionManager.downloadTask(withResumeData: resumeData!)
                 } else {
-                    newTask = self.sessionManager.downloadTask(with: URL(string: fileURL as String)!)
+                    newTask = self.sessionManager.downloadTask(with: self.createRequest(URL(string: fileURL as String)!))
                 }
                 
                 newTask.taskDescription = downloadTask.taskDescription
@@ -318,7 +330,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                             if self.isValidResumeData(resumeData) == true {
                                 newTask = self.sessionManager.downloadTask(withResumeData: resumeData!)
                             } else {
-                                newTask = self.sessionManager.downloadTask(with: URL(string: downloadModel.fileURL)!)
+                                newTask = self.sessionManager.downloadTask(with: self.createRequest(URL(string: downloadModel.fileURL)!))
                             }
                             
                             newTask.taskDescription = task.taskDescription
@@ -358,7 +370,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
 
 extension MZDownloadManager {
 
-    public func addDownloadTask(_ fileName: String, request: URLRequest, destinationPath: String) {
+    fileprivate func addDownloadTask(_ fileName: String, request: URLRequest, destinationPath: String) {
 
         let fileURL = request.url?.absoluteString ?? ""
         let downloadTask = sessionManager.downloadTask(with: request)
@@ -376,12 +388,14 @@ extension MZDownloadManager {
         delegate?.downloadRequestStarted?(downloadModel, index: downloadingArray.count - 1)
     }
 
+    public func addDownloadTask(_ fileName: String, fileURL: URL, destinationPath: String) {
+        let request = self.createRequest(fileURL)
+        self.addDownloadTask(fileName, request: request, destinationPath: destinationPath)
+    }
 
     public func addDownloadTask(_ fileName: String, fileURL: String, destinationPath: String) {
         let url = URL(string: fileURL as String)!
-        let request = URLRequest(url: url)
-
-        self.addDownloadTask(fileName, request: request, destinationPath: destinationPath)
+        self.addDownloadTask(fileName, fileURL: url, destinationPath: destinationPath)
     }
     
     public func addDownloadTask(_ fileName: String, fileURL: String) {
