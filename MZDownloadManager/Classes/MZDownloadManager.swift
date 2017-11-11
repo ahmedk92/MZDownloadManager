@@ -130,23 +130,25 @@ extension MZDownloadManager {
         let downloadTasks = self.downloadTasks()
         
         for downloadTask in downloadTasks {
-            let taskDescComponents: [String] = downloadTask.taskDescription!.components(separatedBy: ",")
-            let fileName = taskDescComponents[TaskDescFileNameIndex]
-            let fileURL = taskDescComponents[TaskDescFileURLIndex]
-            let destinationPath = taskDescComponents[TaskDescFileDestinationIndex]
-            
-            let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
-            downloadModel.task = downloadTask
-            downloadModel.startTime = Date()
-            
-            if downloadTask.state == .running {
-                downloadModel.status = TaskStatus.downloading.description()
-                downloadingArray.append(downloadModel)
-            } else if(downloadTask.state == .suspended) {
-                downloadModel.status = TaskStatus.paused.description()
-                downloadingArray.append(downloadModel)
-            } else {
-                downloadModel.status = TaskStatus.failed.description()
+            if let taskDescription = downloadTask.taskDescription {
+                let taskDescComponents: [String] = taskDescription.components(separatedBy: ",")
+                let fileName = taskDescComponents[TaskDescFileNameIndex]
+                let fileURL = taskDescComponents[TaskDescFileURLIndex]
+                let destinationPath = taskDescComponents[TaskDescFileDestinationIndex]
+
+                let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
+                downloadModel.task = downloadTask
+                downloadModel.startTime = Date()
+
+                if downloadTask.state == .running {
+                    downloadModel.status = TaskStatus.downloading.description()
+                    downloadingArray.append(downloadModel)
+                } else if(downloadTask.state == .suspended) {
+                    downloadModel.status = TaskStatus.paused.description()
+                    downloadingArray.append(downloadModel)
+                } else {
+                    downloadModel.status = TaskStatus.failed.description()
+                }
             }
         }
     }
