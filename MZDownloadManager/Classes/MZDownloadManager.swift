@@ -101,7 +101,10 @@ open class MZDownloadManager: NSObject {
     }
     
     fileprivate func backgroundSession(sessionConfiguration: URLSessionConfiguration) -> URLSession {
-        let session = Foundation.URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: nil)
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 30;
+
+        let session = Foundation.URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: queue)
         return session
     }
 }
@@ -189,6 +192,10 @@ extension MZDownloadManager {
 
 extension MZDownloadManager: URLSessionDownloadDelegate {
 
+    public func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        NSLog("taskIsWaitingForConnectivity task= \(task.taskDescription)")
+    }
+
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         for (index, downloadModel) in self.downloadingArray.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
@@ -225,10 +232,12 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     downloadModel.downloadedFile = (downloadedFileSize, downloadedSizeUnit as String)
                     downloadModel.speed = (speedSize, speedUnit as String)
                     downloadModel.progress = progress
-                    
-                    self.downloadingArray[index] = downloadModel
-                    
-                    self.delegate?.downloadRequestDidUpdateProgress(downloadModel, index: index)
+
+                    if self.downloadingArray.count > index {
+                        self.downloadingArray[index] = downloadModel
+                        self.delegate?.downloadRequestDidUpdateProgress(downloadModel, index: index)
+                    }
+
                 })
                 break
             }
@@ -238,6 +247,15 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         for (index, downloadModel) in downloadingArray.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
+
+                if let response = downloadTask.response as? HTTPURLResponse,
+                   let url = response.url?.absoluteString, response.statusCode >= 400 {
+                    let error = NSError(domain: url, code: response.statusCode, userInfo: nil)
+
+                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                    return
+                }
+
                 let fileName = downloadModel.fileName as NSString
                 let basePath = downloadModel.destinationPath == "" ? MZUtility.baseFilePath : downloadModel.destinationPath
                 let destinationPath = (basePath as NSString).appendingPathComponent(fileName as String)
@@ -283,7 +301,13 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         debugPrint("task id: \(task.taskIdentifier)")
         /***** Any interrupted tasks due to any reason will be populated in failed state after init *****/
-        let error: NSError? = error as NSError?
+
+        var error: NSError? = error as NSError?
+        if let response = task.response as? HTTPURLResponse,
+           let url = response.url?.absoluteString, response.statusCode >= 400 {
+            error = NSError(domain: url, code: response.statusCode, userInfo: nil)
+        }
+
         DispatchQueue.main.async {
             if (error?.userInfo[NSURLErrorBackgroundTaskCancelledReasonKey] as? NSNumber)?.intValue == NSURLErrorCancelledReasonUserForceQuitApplication || (error?.userInfo[NSURLErrorBackgroundTaskCancelledReasonKey] as? NSNumber)?.intValue == NSURLErrorCancelledReasonBackgroundUpdatesDisabled {
                 
@@ -334,10 +358,14 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                             } else {
                                 newTask = self.sessionManager.downloadTask(with: self.createRequest(URL(string: downloadModel.fileURL)!))
                             }
+
+                            let oldTask = downloadModel.task
                             
                             newTask.taskDescription = task.taskDescription
                             downloadModel.status = TaskStatus.failed.description()
                             downloadModel.task = newTask as? URLSessionDownloadTask
+
+                            oldTask?.cancel()
                             
                             self.downloadingArray[index] = downloadModel
                             
