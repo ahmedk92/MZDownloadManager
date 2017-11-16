@@ -7,6 +7,8 @@
 //
 
 import UIKit
+import Dispatch
+
 fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
   switch (lhs, rhs) {
   case let (l?, r?):
@@ -66,6 +68,8 @@ fileprivate func > <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
 }
 
 open class MZDownloadManager: NSObject {
+
+    fileprivate let dispatchQueue = DispatchQueue(label: "com.downloadmanager", attributes: .concurrent)
     
     fileprivate var sessionManager: URLSession!
     
@@ -129,28 +133,29 @@ extension MZDownloadManager {
     }
     
     fileprivate func populateOtherDownloadTasks() {
-        
-        let downloadTasks = self.downloadTasks()
-        
-        for downloadTask in downloadTasks {
-            if let taskDescription = downloadTask.taskDescription {
-                let taskDescComponents: [String] = taskDescription.components(separatedBy: ",")
-                let fileName = taskDescComponents[TaskDescFileNameIndex]
-                let fileURL = taskDescComponents[TaskDescFileURLIndex]
-                let destinationPath = taskDescComponents[TaskDescFileDestinationIndex]
+        dispatchQueue.sync {
+            let downloadTasks = self.downloadTasks()
 
-                let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
-                downloadModel.task = downloadTask
-                downloadModel.startTime = Date()
+            for downloadTask in downloadTasks {
+                if let taskDescription = downloadTask.taskDescription {
+                    let taskDescComponents: [String] = taskDescription.components(separatedBy: ",")
+                    let fileName = taskDescComponents[TaskDescFileNameIndex]
+                    let fileURL = taskDescComponents[TaskDescFileURLIndex]
+                    let destinationPath = taskDescComponents[TaskDescFileDestinationIndex]
 
-                if downloadTask.state == .running {
-                    downloadModel.status = TaskStatus.downloading.description()
-                    downloadingArray.append(downloadModel)
-                } else if(downloadTask.state == .suspended) {
-                    downloadModel.status = TaskStatus.paused.description()
-                    downloadingArray.append(downloadModel)
-                } else {
-                    downloadModel.status = TaskStatus.failed.description()
+                    let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
+                    downloadModel.task = downloadTask
+                    downloadModel.startTime = Date()
+
+                    if downloadTask.state == .running {
+                        downloadModel.status = TaskStatus.downloading.description()
+                        downloadingArray.append(downloadModel)
+                    } else if(downloadTask.state == .suspended) {
+                        downloadModel.status = TaskStatus.paused.description()
+                        downloadingArray.append(downloadModel)
+                    } else {
+                        downloadModel.status = TaskStatus.failed.description()
+                    }
                 }
             }
         }
@@ -197,102 +202,106 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     }
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        for (index, downloadModel) in self.downloadingArray.enumerated() {
-            if downloadTask.isEqual(downloadModel.task) {
-                DispatchQueue.main.async(execute: { () -> Void in
-                    
-                    let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
-                    let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
-                    let progress = Float(receivedBytesCount / totalBytesCount)
-                    
-                    let taskStartedDate = downloadModel.startTime!
-                    let timeInterval = taskStartedDate.timeIntervalSinceNow
-                    let downloadTime = TimeInterval(-1 * timeInterval)
-                    
-                    let speed = Float(totalBytesWritten) / Float(downloadTime)
-                    
-                    let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
-                    
-                    let remainingTime = remainingContentLength / Int64(speed)
-                    let hours = Int(remainingTime) / 3600
-                    let minutes = (Int(remainingTime) - hours * 3600) / 60
-                    let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
-                    
-                    let totalFileSize = MZUtility.calculateFileSizeInUnit(totalBytesExpectedToWrite)
-                    let totalFileSizeUnit = MZUtility.calculateUnit(totalBytesExpectedToWrite)
-                    
-                    let downloadedFileSize = MZUtility.calculateFileSizeInUnit(totalBytesWritten)
-                    let downloadedSizeUnit = MZUtility.calculateUnit(totalBytesWritten)
-                    
-                    let speedSize = MZUtility.calculateFileSizeInUnit(Int64(speed))
-                    let speedUnit = MZUtility.calculateUnit(Int64(speed))
-                    
-                    downloadModel.remainingTime = (hours, minutes, seconds)
-                    downloadModel.file = (totalFileSize, totalFileSizeUnit as String)
-                    downloadModel.downloadedFile = (downloadedFileSize, downloadedSizeUnit as String)
-                    downloadModel.speed = (speedSize, speedUnit as String)
-                    downloadModel.progress = progress
+        dispatchQueue.sync {
+            for (index, downloadModel) in self.downloadingArray.enumerated() {
+                if downloadTask.isEqual(downloadModel.task) {
 
-                    if self.downloadingArray.count > index {
-                        self.downloadingArray[index] = downloadModel
-                        self.delegate?.downloadRequestDidUpdateProgress(downloadModel, index: index)
-                    }
 
-                })
-                break
+                        let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
+                        let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
+                        let progress = Float(receivedBytesCount / totalBytesCount)
+
+                        let taskStartedDate = downloadModel.startTime!
+                        let timeInterval = taskStartedDate.timeIntervalSinceNow
+                        let downloadTime = TimeInterval(-1 * timeInterval)
+
+                        let speed = Float(totalBytesWritten) / Float(downloadTime)
+
+                        let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
+
+                        let remainingTime = remainingContentLength / Int64(speed)
+                        let hours = Int(remainingTime) / 3600
+                        let minutes = (Int(remainingTime) - hours * 3600) / 60
+                        let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
+
+                        let totalFileSize = MZUtility.calculateFileSizeInUnit(totalBytesExpectedToWrite)
+                        let totalFileSizeUnit = MZUtility.calculateUnit(totalBytesExpectedToWrite)
+
+                        let downloadedFileSize = MZUtility.calculateFileSizeInUnit(totalBytesWritten)
+                        let downloadedSizeUnit = MZUtility.calculateUnit(totalBytesWritten)
+
+                        let speedSize = MZUtility.calculateFileSizeInUnit(Int64(speed))
+                        let speedUnit = MZUtility.calculateUnit(Int64(speed))
+
+                        downloadModel.remainingTime = (hours, minutes, seconds)
+                        downloadModel.file = (totalFileSize, totalFileSizeUnit as String)
+                        downloadModel.downloadedFile = (downloadedFileSize, downloadedSizeUnit as String)
+                        downloadModel.speed = (speedSize, speedUnit as String)
+                        downloadModel.progress = progress
+                    DispatchQueue.main.async(execute: { () -> Void in
+                        if self.downloadingArray.count > index {
+                            self.downloadingArray[index] = downloadModel
+                            self.delegate?.downloadRequestDidUpdateProgress(downloadModel, index: index)
+                        }
+
+                    })
+                    break
+                }
             }
         }
     }
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        for (index, downloadModel) in downloadingArray.enumerated() {
-            if downloadTask.isEqual(downloadModel.task) {
+        dispatchQueue.sync {
+            for (index, downloadModel) in downloadingArray.enumerated() {
+                if downloadTask.isEqual(downloadModel.task) {
 
-                if let response = downloadTask.response as? HTTPURLResponse,
-                   let url = response.url?.absoluteString, response.statusCode >= 400 {
-                    let error = NSError(domain: url, code: response.statusCode, userInfo: nil)
+                    if let response = downloadTask.response as? HTTPURLResponse,
+                       let url = response.url?.absoluteString, response.statusCode >= 400 {
+                        let error = NSError(domain: url, code: response.statusCode, userInfo: nil)
 
-                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
-                    return
-                }
-
-                let fileName = downloadModel.fileName as NSString
-                let basePath = downloadModel.destinationPath == "" ? MZUtility.baseFilePath : downloadModel.destinationPath
-                let destinationPath = (basePath as NSString).appendingPathComponent(fileName as String)
-                
-                let fileManager : FileManager = FileManager.default
-                
-                //If all set just move downloaded file to the destination
-                if fileManager.fileExists(atPath: basePath) {
-                    let fileURL = URL(fileURLWithPath: destinationPath as String)
-                    debugPrint("directory path = \(destinationPath)")
-                    
-                    do {
-                        if fileManager.fileExists(atPath:destinationPath as String) {
-                            try fileManager.removeItem(at:fileURL)
-                        }
-                        try fileManager.moveItem(at: location, to: fileURL)
-                    } catch let error as NSError {
-                        debugPrint("Error while moving downloaded file to destination path:\(error)")
-                        DispatchQueue.main.async(execute: { () -> Void in
-                            self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
-                        })
-                    }
-                } else {
-                    //Opportunity to handle the folder doesnot exists error appropriately.
-                    //Move downloaded file to destination
-                    //Delegate will be called on the session queue
-                    //Otherwise blindly give error Destination folder does not exists
-                    
-                    if let _ = self.delegate?.downloadRequestDestinationDoestNotExists {
-                        self.delegate?.downloadRequestDestinationDoestNotExists?(downloadModel, index: index, location: location)
-                    } else {
-                        let error = NSError(domain: "FolderDoesNotExist", code: 404, userInfo: [NSLocalizedDescriptionKey : "Destination folder does not exists"])
                         self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                        return
                     }
+
+                    let fileName = downloadModel.fileName as NSString
+                    let basePath = downloadModel.destinationPath == "" ? MZUtility.baseFilePath : downloadModel.destinationPath
+                    let destinationPath = (basePath as NSString).appendingPathComponent(fileName as String)
+
+                    let fileManager : FileManager = FileManager.default
+
+                    //If all set just move downloaded file to the destination
+                    if fileManager.fileExists(atPath: basePath) {
+                        let fileURL = URL(fileURLWithPath: destinationPath as String)
+                        debugPrint("directory path = \(destinationPath)")
+
+                        do {
+                            if fileManager.fileExists(atPath:destinationPath as String) {
+                                try fileManager.removeItem(at:fileURL)
+                            }
+                            try fileManager.moveItem(at: location, to: fileURL)
+                        } catch let error as NSError {
+                            debugPrint("Error while moving downloaded file to destination path:\(error)")
+                            DispatchQueue.main.async(execute: { () -> Void in
+                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                            })
+                        }
+                    } else {
+                        //Opportunity to handle the folder doesnot exists error appropriately.
+                        //Move downloaded file to destination
+                        //Delegate will be called on the session queue
+                        //Otherwise blindly give error Destination folder does not exists
+
+                        if let _ = self.delegate?.downloadRequestDestinationDoestNotExists {
+                            self.delegate?.downloadRequestDestinationDoestNotExists?(downloadModel, index: index, location: location)
+                        } else {
+                            let error = NSError(domain: "FolderDoesNotExist", code: 404, userInfo: [NSLocalizedDescriptionKey : "Destination folder does not exists"])
+                            self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                        }
+                    }
+
+                    break
                 }
-                
-                break
             }
         }
     }
@@ -308,48 +317,50 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
             error = NSError(domain: url, code: response.statusCode, userInfo: nil)
         }
 
-        DispatchQueue.main.async {
+        dispatchQueue.sync {
             if (error?.userInfo[NSURLErrorBackgroundTaskCancelledReasonKey] as? NSNumber)?.intValue == NSURLErrorCancelledReasonUserForceQuitApplication || (error?.userInfo[NSURLErrorBackgroundTaskCancelledReasonKey] as? NSNumber)?.intValue == NSURLErrorCancelledReasonBackgroundUpdatesDisabled {
-                
+
                 let downloadTask = task as! URLSessionDownloadTask
                 let taskDescComponents: [String] = downloadTask.taskDescription!.components(separatedBy: ",")
                 let fileName = taskDescComponents[self.TaskDescFileNameIndex]
                 let fileURL = taskDescComponents[self.TaskDescFileURLIndex]
                 let destinationPath = taskDescComponents[self.TaskDescFileDestinationIndex]
-                
+
                 let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
                 downloadModel.status = TaskStatus.failed.description()
                 downloadModel.task = downloadTask
-                
+
                 let resumeData = error?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
-                
+
                 var newTask = downloadTask
                 if self.isValidResumeData(resumeData) == true {
                     newTask = self.sessionManager.downloadTask(withResumeData: resumeData!)
                 } else {
                     newTask = self.sessionManager.downloadTask(with: self.createRequest(URL(string: fileURL as String)!))
                 }
-                
+
                 newTask.taskDescription = downloadTask.taskDescription
                 downloadModel.task = newTask
-                
+
                 self.downloadingArray.append(downloadModel)
-                
-                self.delegate?.downloadRequestDidPopulatedInterruptedTasks(self.downloadingArray)
-                
+
+                DispatchQueue.main.async {
+                    self.delegate?.downloadRequestDidPopulatedInterruptedTasks(self.downloadingArray)
+                }
+
             } else {
                 for(index, object) in self.downloadingArray.enumerated() {
                     let downloadModel = object
                     if task.isEqual(downloadModel.task) {
                         if error?.code == NSURLErrorCancelled || error == nil {
                             self.downloadingArray.remove(at: index)
-                            
-                            if error == nil {
-                                self.delegate?.downloadRequestFinished?(downloadModel, index: index)
-                            } else {
-                                self.delegate?.downloadRequestCanceled?(downloadModel, index: index)
+                            DispatchQueue.main.async {
+                                if error == nil {
+                                    self.delegate?.downloadRequestFinished?(downloadModel, index: index)
+                                } else {
+                                    self.delegate?.downloadRequestCanceled?(downloadModel, index: index)
+                                }
                             }
-                            
                         } else {
                             let resumeData = error?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
                             var newTask = task
@@ -360,21 +371,21 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                             }
 
                             let oldTask = downloadModel.task
-                            
+
                             newTask.taskDescription = task.taskDescription
                             downloadModel.status = TaskStatus.failed.description()
                             downloadModel.task = newTask as? URLSessionDownloadTask
 
                             oldTask?.cancel()
-                            
+
                             self.downloadingArray[index] = downloadModel
-                            
-                            if let error = error {
-                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
-                            } else {
-                                let error: NSError = NSError(domain: "MZDownloadManagerDomain", code: 1000, userInfo: [NSLocalizedDescriptionKey : "Unknown error occurred"])
-                                
-                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                            DispatchQueue.main.async {
+                                if let error = error {
+                                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                                } else {
+                                    let error: NSError = NSError(domain: "MZDownloadManagerDomain", code: 1000, userInfo: [NSLocalizedDescriptionKey : "Unknown error occurred"])
+                                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                                }
                             }
                         }
                         break;
@@ -382,6 +393,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                 }
             }
         }
+
     }
     
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -414,8 +426,10 @@ extension MZDownloadManager {
         downloadModel.status = TaskStatus.downloading.description()
         downloadModel.task = downloadTask
 
-        downloadingArray.append(downloadModel)
-        delegate?.downloadRequestStarted?(downloadModel, index: downloadingArray.count - 1)
+        dispatchQueue.sync {
+            downloadingArray.append(downloadModel)
+            delegate?.downloadRequestStarted?(downloadModel, index: downloadingArray.count - 1)
+        }
     }
 
     public func addDownloadTask(_ fileName: String, fileURL: URL, destinationPath: String) {
@@ -433,62 +447,67 @@ extension MZDownloadManager {
     }
     
     public func pauseDownloadTaskAtIndex(_ index: Int) {
-        
-        let downloadModel = downloadingArray[index]
-        
-        guard downloadModel.status != TaskStatus.paused.description() else {
-            return
+        dispatchQueue.sync {
+            let downloadModel = downloadingArray[index]
+
+            guard downloadModel.status != TaskStatus.paused.description() else {
+                return
+            }
+
+            let downloadTask = downloadModel.task
+            downloadTask!.suspend()
+            downloadModel.status = TaskStatus.paused.description()
+            downloadModel.startTime = Date()
+
+            downloadingArray[index] = downloadModel
+
+            delegate?.downloadRequestDidPaused?(downloadModel, index: index)
         }
-        
-        let downloadTask = downloadModel.task
-        downloadTask!.suspend()
-        downloadModel.status = TaskStatus.paused.description()
-        downloadModel.startTime = Date()
-        
-        downloadingArray[index] = downloadModel
-        
-        delegate?.downloadRequestDidPaused?(downloadModel, index: index)
     }
     
     public func resumeDownloadTaskAtIndex(_ index: Int) {
-        
-        let downloadModel = downloadingArray[index]
-        
-        guard downloadModel.status != TaskStatus.downloading.description() else {
-            return
+        dispatchQueue.sync {
+            let downloadModel = downloadingArray[index]
+
+            guard downloadModel.status != TaskStatus.downloading.description() else {
+                return
+            }
+
+            let downloadTask = downloadModel.task
+            downloadTask!.resume()
+            downloadModel.status = TaskStatus.downloading.description()
+
+            downloadingArray[index] = downloadModel
+
+            delegate?.downloadRequestDidResumed?(downloadModel, index: index)
         }
-        
-        let downloadTask = downloadModel.task
-        downloadTask!.resume()
-        downloadModel.status = TaskStatus.downloading.description()
-        
-        downloadingArray[index] = downloadModel
-        
-        delegate?.downloadRequestDidResumed?(downloadModel, index: index)
     }
     
     public func retryDownloadTaskAtIndex(_ index: Int) {
-        let downloadModel = downloadingArray[index]
-        
-        guard downloadModel.status != TaskStatus.downloading.description() else {
-            return
+        dispatchQueue.sync {
+            let downloadModel = downloadingArray[index]
+
+            guard downloadModel.status != TaskStatus.downloading.description() else {
+                return
+            }
+
+            let downloadTask = downloadModel.task
+
+            downloadTask!.resume()
+            downloadModel.status = TaskStatus.downloading.description()
+            downloadModel.startTime = Date()
+            downloadModel.task = downloadTask
+
+            downloadingArray[index] = downloadModel
         }
-        
-        let downloadTask = downloadModel.task
-        
-        downloadTask!.resume()
-        downloadModel.status = TaskStatus.downloading.description()
-        downloadModel.startTime = Date()
-        downloadModel.task = downloadTask
-        
-        downloadingArray[index] = downloadModel
     }
     
     public func cancelTaskAtIndex(_ index: Int) {
-        
-        let downloadInfo = downloadingArray[index]
-        let downloadTask = downloadInfo.task
-        downloadTask!.cancel()
+        dispatchQueue.sync {
+            let downloadInfo = downloadingArray[index]
+            let downloadTask = downloadInfo.task
+            downloadTask!.cancel()
+        }
     }
     
     public func presentNotificationForDownload(_ notifAction: String, notifBody: String) {
