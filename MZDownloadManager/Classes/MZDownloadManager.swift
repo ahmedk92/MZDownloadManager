@@ -168,24 +168,26 @@ extension MZDownloadManager {
     
     fileprivate func isValidResumeData(_ resumeData: Data?) -> Bool {
         
-        guard let resumeData = resumeData, resumeData?.count > 0 else {
+        guard let resumeData = resumeData, resumeData.count > 0 else {
             return false
         }
         
         do {
-            var resumeDictionary : AnyObject = try PropertyListSerialization.propertyList(from: resumeData, options: PropertyListSerialization.MutabilityOptions(), format: nil) as AnyObject
-            var localFilePath = (resumeDictionary["NSURLSessionResumeInfoLocalPath"] as? String)
+            let resumeDictionary : AnyObject = try PropertyListSerialization.propertyList(from: resumeData, options: PropertyListSerialization.MutabilityOptions(), format: nil) as AnyObject
 
-            guard let filePath = localFilePath, filePath.characters.count > 0 else {
-                if let tempFile = resumeDictionary["NSURLSessionResumeInfoTempFileName"] as? String {
-                    localFilePath = (NSTemporaryDirectory() as String) + tempFile
-                }
-            }
-            
-            if let localFilePath = localFilePath {
-                let fileManager : FileManager = FileManager.default
-                debugPrint("resume data file exists: \(fileManager.fileExists(atPath: localFilePath))")
-                return fileManager.fileExists(atPath: localFilePath)
+            let localFilePath = resumeDictionary["NSURLSessionResumeInfoLocalPath"] as? String
+            let tempFile = resumeDictionary["NSURLSessionResumeInfoTempFileName"] as? String
+
+            if let localFilePath = localFilePath,
+               localFilePath.characters.count > 0 {
+
+                debugPrint("resume data file exists: \(FileManager.default.fileExists(atPath: localFilePath))")
+                return FileManager.default.fileExists(atPath: localFilePath)
+            } else if let tempFile = tempFile {
+
+                let localFilePath = (NSTemporaryDirectory() as String) + tempFile
+                debugPrint("resume data file exists: \(FileManager.default.fileExists(atPath: localFilePath))")
+                return FileManager.default.fileExists(atPath: localFilePath)
             }
 
             return false
