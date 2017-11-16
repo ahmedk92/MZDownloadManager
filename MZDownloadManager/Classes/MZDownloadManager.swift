@@ -198,9 +198,9 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     }
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        for (index, downloadModel) in self.downloadingArray.enumerated() {
+        let downloadingList = self.downloadingArray
+        for (_, downloadModel) in downloadingList.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
-
 
                 let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
                 let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
@@ -234,26 +234,36 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                 downloadModel.speed = (speedSize, speedUnit as String)
                 downloadModel.progress = progress
                 DispatchQueue.main.async(execute: { () -> Void in
-                    if self.downloadingArray.count > index {
+                    if let index = self.index(ofModel: downloadModel) {
                         self.downloadingArray[index] = downloadModel
                         self.delegate?.downloadRequestDidUpdateProgress(downloadModel, index: index)
                     }
-
                 })
                 break
             }
         }
     }
 
+    fileprivate func index(ofModel model: MZDownloadModel) -> Int? {
+        let index = self.downloadingArray.index(of: model)
+        if let index = index, self.downloadingArray.count > index {
+            return index
+        }
+        return nil
+    }
+
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        for (index, downloadModel) in downloadingArray.enumerated() {
+        let downloadingList = self.downloadingArray
+        for (i, downloadModel) in downloadingList.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
 
                 if let response = downloadTask.response as? HTTPURLResponse,
                    let url = response.url?.absoluteString, response.statusCode >= 400 {
                     let error = NSError(domain: url, code: response.statusCode, userInfo: nil)
 
-                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                    if let index = self.index(ofModel: downloadModel) {
+                        self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                    }
                     return
                 }
 
@@ -276,7 +286,9 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     } catch let error as NSError {
                         debugPrint("Error while moving downloaded file to destination path:\(error)")
                         DispatchQueue.main.async(execute: { () -> Void in
-                            self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                            if let index = self.index(ofModel: downloadModel) {
+                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                            }
                         })
                     }
                 } else {
@@ -285,11 +297,13 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     //Delegate will be called on the session queue
                     //Otherwise blindly give error Destination folder does not exists
 
-                    if let _ = self.delegate?.downloadRequestDestinationDoestNotExists {
-                        self.delegate?.downloadRequestDestinationDoestNotExists?(downloadModel, index: index, location: location)
-                    } else {
-                        let error = NSError(domain: "FolderDoesNotExist", code: 404, userInfo: [NSLocalizedDescriptionKey : "Destination folder does not exists"])
-                        self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                    if let index = self.index(ofModel: downloadModel) {
+                        if let _ = self.delegate?.downloadRequestDestinationDoestNotExists {
+                            self.delegate?.downloadRequestDestinationDoestNotExists?(downloadModel, index: index, location: location)
+                        } else {
+                            let error = NSError(domain: "FolderDoesNotExist", code: 404, userInfo: [NSLocalizedDescriptionKey: "Destination folder does not exists"])
+                            self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                        }
                     }
                 }
 
@@ -341,16 +355,20 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
             }
 
         } else {
-            for(index, object) in self.downloadingArray.enumerated() {
+            let downloadingList = self.downloadingArray
+
+            for(_, object) in downloadingList.enumerated() {
                 let downloadModel = object
                 if task.isEqual(downloadModel.task) {
                     if error?.code == NSURLErrorCancelled || error == nil {
-                        self.downloadingArray.remove(at: index)
-                        DispatchQueue.main.async {
-                            if error == nil {
-                                self.delegate?.downloadRequestFinished?(downloadModel, index: index)
-                            } else {
-                                self.delegate?.downloadRequestCanceled?(downloadModel, index: index)
+                        if let index = self.index(ofModel: downloadModel) {
+                            self.downloadingArray.remove(at: index)
+                            DispatchQueue.main.async {
+                                if error == nil {
+                                    self.delegate?.downloadRequestFinished?(downloadModel, index: index)
+                                } else {
+                                    self.delegate?.downloadRequestCanceled?(downloadModel, index: index)
+                                }
                             }
                         }
                     } else {
@@ -369,14 +387,16 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                         downloadModel.task = newTask as? URLSessionDownloadTask
 
                         oldTask?.cancel()
+                        if let index = self.index(ofModel: downloadModel) {
+                            self.downloadingArray[index] = downloadModel
 
-                        self.downloadingArray[index] = downloadModel
-                        DispatchQueue.main.async {
-                            if let error = error {
-                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
-                            } else {
-                                let error: NSError = NSError(domain: "MZDownloadManagerDomain", code: 1000, userInfo: [NSLocalizedDescriptionKey : "Unknown error occurred"])
-                                self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                            DispatchQueue.main.async {
+                                if let error = error {
+                                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                                } else {
+                                    let error: NSError = NSError(domain: "MZDownloadManagerDomain", code: 1000, userInfo: [NSLocalizedDescriptionKey : "Unknown error occurred"])
+                                    self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                                }
                             }
                         }
                     }
