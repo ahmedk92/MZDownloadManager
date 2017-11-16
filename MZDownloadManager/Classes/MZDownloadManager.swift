@@ -191,30 +191,29 @@ extension MZDownloadManager {
     }
 }
 
-extension MZDownloadManager: URLSessionDownloadDelegate {
-
-    public func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
-        NSLog("taskIsWaitingForConnectivity task= \(task.taskDescription)")
-    }
+extension MZDownloadManager: URLSessionDownloadDelegate, URLSessionTaskDelegate {
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         let downloadingList = self.downloadingArray
-        for (_, downloadModel) in downloadingList.enumerated() {
+        for (_, model) in downloadingList.enumerated() {
+            let downloadModel = model
             if downloadTask.isEqual(downloadModel.task) {
 
                 let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
                 let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
-                let progress = Float(receivedBytesCount / totalBytesCount)
+                let progress = totalBytesCount > 0 ? Float(receivedBytesCount / totalBytesCount) : 0
 
-                let taskStartedDate = downloadModel.startTime!
-                let timeInterval = taskStartedDate.timeIntervalSinceNow
+                var timeInterval: TimeInterval = 0
+                if let interval = downloadModel.startTime?.timeIntervalSinceNow {
+                    timeInterval = interval
+                }
                 let downloadTime = TimeInterval(-1 * timeInterval)
 
-                let speed = Float(totalBytesWritten) / Float(downloadTime)
+                let speed = downloadTime > 0 ? Float(totalBytesWritten) / Float(downloadTime) : 0
 
                 let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
 
-                let remainingTime = remainingContentLength / Int64(speed)
+                let remainingTime = speed > 0 ? remainingContentLength / Int64(speed) : 0
                 let hours = Int(remainingTime) / 3600
                 let minutes = (Int(remainingTime) - hours * 3600) / 60
                 let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
@@ -497,12 +496,13 @@ extension MZDownloadManager {
 
         let downloadTask = downloadModel.task
 
-        downloadTask!.resume()
         downloadModel.status = TaskStatus.downloading.description()
         downloadModel.startTime = Date()
         downloadModel.task = downloadTask
-
         downloadingArray[index] = downloadModel
+
+        downloadTask!.resume()
+
     }
     
     public func cancelTaskAtIndex(_ index: Int) {
