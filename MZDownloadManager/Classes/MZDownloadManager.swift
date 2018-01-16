@@ -475,8 +475,8 @@ extension MZDownloadManager {
         self.addDownloadTask(fileName, request: request, destinationPath: destinationPath)
     }
 
-    public func addDownloadTask(_ fileName: String, fileURL: String, destinationPath: String) {
-        guard let url = URL(string: fileURL) else {
+    public func addDownloadTask(_ fileName: String, fileURLString: String, destinationPath: String) {
+        guard let url = URL(string: fileURLString) else {
             return
         }
 
@@ -484,7 +484,7 @@ extension MZDownloadManager {
     }
     
     public func addDownloadTask(_ fileName: String, fileURL: String) {
-        addDownloadTask(fileName, fileURL: fileURL, destinationPath: "")
+        addDownloadTask(fileName, fileURLString: fileURL, destinationPath: "")
     }
     
     public func pauseDownloadTaskAtIndex(_ index: Int) {
